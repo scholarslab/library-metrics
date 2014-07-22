@@ -21,6 +21,10 @@ rasters:
   host: geo.server.com
   user: err8n
   geoserver-data-dir: /var/geodata/geoserver/data
+geoserver:
+  url: http://geo.server.com:8080/geoserver
+  user: admin
+  password: secret
 ```
 
 Now you can call it like this:

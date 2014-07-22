@@ -23,6 +23,10 @@ rasters:
   host: libsvr35.lib.virginia.edu
   user: err8n
   geoserver-data-dir: /var/geodata/geoserver/data
+geoserver:
+  url: http://geo.server.com:8080/geoserver
+  user: admin
+  password: secret
 ```
 
 This will connect to each database server and walk over the databases and their
@@ -46,6 +50,7 @@ import sys
 
 import paramiko
 import psycopg2
+import requests
 import yaml
 
 
@@ -246,6 +251,29 @@ class RasterMetrics(MetricsBase):
         return ext == '.tif' or ext == '.tiff'
 
 
+class LayerMetrics(MetricsBase):
+
+    def get_counts(self):
+        self.auth = (self.config['user'], self.config['password'])
+        return self.get_layer_count() + self.get_group_count()
+
+    def get_layer_count(self):
+        return self._get_count(self.config['url'] + '/rest/layers.json',
+                               'layers', 'layer')
+
+    def get_group_count(self):
+        return self._get_count(self.config['url'] + '/rest/layergroups.json',
+                               'layerGroups', 'layerGroup')
+
+    def _get_count(self, url, key0, key1):
+        req = requests.get(url, auth=self.auth)
+        items = [
+            obj for obj in req.json()[key0][key1]
+            if not self.filter_fn(unicode(obj['name']))
+            ]
+        return len(items)
+
+
 class Script(object):
 
     def __init__(self, argv=None):
@@ -287,6 +315,7 @@ class Script(object):
             print('layers\t{}'.format(self.layer_total))
             print('raster\t{}'.format(self.raster_total))
             print('titles\t{}'.format(self.raster_total + self.table_total))
+            print('named layers\t{}'.format(self.named_total))
 
     def main(self, argv=None):
         postgis = PostGISMetrics(
@@ -302,6 +331,13 @@ class Script(object):
             self.opts.verbose,
             )
         self.raster_total = rasters.get_counts()
+
+        layers = LayerMetrics(
+            self.config['geoserver'],
+            self.opts.filter,
+            self.opts.verbose,
+            )
+        self.named_total = layers.get_counts()
 
         self.do_totals()
 
