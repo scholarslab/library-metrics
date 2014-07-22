@@ -136,7 +136,7 @@ class PostGISMetrics(MetricsBase):
                                                                table, count))
                             layer_total += count
 
-        return (table_total, layer_total)
+        return {'table': table_total, 'layer': layer_total}
 
     @staticmethod
     def list_databases(db_config):
@@ -211,7 +211,7 @@ class RasterMetrics(MetricsBase):
                         self.log('{}\t{}'.format(root, dir_count))
                     raster_counts += dir_count
 
-        return raster_counts
+        return {'raster': raster_counts}
 
     @contextmanager
     def connect(self):
@@ -255,7 +255,7 @@ class LayerMetrics(MetricsBase):
 
     def get_counts(self):
         self.auth = (self.config['user'], self.config['password'])
-        return self.get_layer_count() + self.get_group_count()
+        return {'named': self.get_layer_count() + self.get_group_count()}
 
     def get_layer_count(self):
         return self._get_count(self.config['url'] + '/rest/layers.json',
@@ -275,6 +275,9 @@ class LayerMetrics(MetricsBase):
 
 
 class Script(object):
+    METRIC_ARGS = [(PostGISMetrics, 'postgis'),
+                   (RasterMetrics, 'rasters'),
+                   (LayerMetrics, 'geoserver')]
 
     def __init__(self, argv=None):
         self.argv = sys.argv[1:] if argv is None else argv
@@ -312,32 +315,17 @@ class Script(object):
 
     def do_totals(self):
         if self.opts.do_totals:
-            print('layers\t{}'.format(self.layer_total))
-            print('raster\t{}'.format(self.raster_total))
-            print('titles\t{}'.format(self.raster_total + self.table_total))
-            print('named layers\t{}'.format(self.named_total))
+            metrics = self.metrics
+            print('layers\t{}'.format(metrics['layer']))
+            print('raster\t{}'.format(metrics['raster']))
+            print('titles\t{}'.format(metrics['raster'] + metrics['table']))
+            print('named layers\t{}'.format(metrics['named']))
 
     def main(self, argv=None):
-        postgis = PostGISMetrics(
-            self.config['postgis'],
-            self.opts.filter,
-            self.opts.verbose,
-            )
-        (self.table_total, self.layer_total) = postgis.get_counts()
-
-        rasters = RasterMetrics(
-            self.config['rasters'],
-            self.opts.filter,
-            self.opts.verbose,
-            )
-        self.raster_total = rasters.get_counts()
-
-        layers = LayerMetrics(
-            self.config['geoserver'],
-            self.opts.filter,
-            self.opts.verbose,
-            )
-        self.named_total = layers.get_counts()
+        self.metrics = metrics = {}
+        for (klass, key) in self.METRIC_ARGS:
+            m = klass(self.config[key], self.opts.filter, self.opts.verbose)
+            metrics.update(m.get_counts())
 
         self.do_totals()
 
