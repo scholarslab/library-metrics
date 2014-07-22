@@ -19,6 +19,10 @@ postgis:
   - host: postgis2.host.edu
     user: post_user_2
     password: hushhush
+rasters:
+  host: libsvr35.lib.virginia.edu
+  user: err8n
+  geoserver-data-dir: /var/geodata/geoserver/data
 ```
 
 This will connect to each database server and walk over the databases and their
@@ -33,11 +37,14 @@ from __future__ import (
     )
 
 import argparse
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
+import os
 # from pprint import pprint
 import re
+import stat
 import sys
 
+import paramiko
 import psycopg2
 import yaml
 
@@ -67,40 +74,14 @@ def db_fetch(config, sql, *params):
         return c.fetchall()
 
 
-class PostGISMetrics(object):
+class MetricsBase(object):
 
-    def __init__(self, host_configs, filters, verbose=False):
-        self.host_configs = host_configs
+    def __init__(self, config, filters, verbose=False):
+        self.config = config
         self.filters = filters
         self.verbose = verbose
         self.set_logger()
         self.set_filter_fn()
-
-    def get_layer_count(self):
-        """\
-        This queries the database repeatedly to get the number of PostGIS
-        resources.
-        """
-        layer_total = 0
-
-        for host_config in self.host_configs:
-            for (db_name, _) in self.list_databases(host_config):
-                if self.filter_fn(db_name):
-                    continue
-
-                db_config = host_config.copy()
-                db_config['dbname'] = db_name
-
-                with db_cursor(db_config) as (cxn, c):
-                    self.cursor = c
-                    for (schema, table) in self.list_tables():
-                        if self.is_postgis(table):
-                            count = self.count_rows(schema, table)
-                            self.log('{}.{}.{}\t{}'.format(db_name, schema,
-                                                           table, count))
-                            layer_total += count
-
-        return layer_total
 
     def set_logger(self):
         if self.verbose:
@@ -115,6 +96,42 @@ class PostGISMetrics(object):
             regexes = [re.compile(regex) for regex in self.filters]
             self.filter_fn = lambda n: any(regex.search(n) is not None
                                            for regex in regexes)
+
+    def get_counts(self):
+        raise NotImplementedError(
+            '{}.get_counts'.format(self.__class__.__name__),
+            )
+
+
+class PostGISMetrics(MetricsBase):
+
+    def get_counts(self):
+        """\
+        This queries the database repeatedly to get the number of PostGIS
+        resources.
+        """
+        table_total = layer_total = 0
+
+        for host_config in self.config:
+            for (db_name, _) in self.list_databases(host_config):
+                if self.filter_fn(db_name):
+                    continue
+
+                db_config = host_config.copy()
+                db_config['dbname'] = db_name
+
+                with db_cursor(db_config) as (cxn, c):
+                    self.cursor = c
+                    for (schema, table) in self.list_tables():
+                        if self.is_postgis(table):
+                            count = self.count_rows(schema, table)
+                            if count:
+                                table_total += 1
+                                self.log('{}.{}.{}\t{}'.format(db_name, schema,
+                                                               table, count))
+                            layer_total += count
+
+        return (table_total, layer_total)
 
     @staticmethod
     def list_databases(db_config):
@@ -169,6 +186,66 @@ class PostGISMetrics(object):
         return self.cursor.fetchone()[0]
 
 
+class RasterMetrics(MetricsBase):
+
+    def get_counts(self):
+        raster_counts = 0
+
+        with self.connect() as ssh:
+            with closing(ssh.open_sftp()) as sftp:
+                dirname = os.path.join(self.config['geoserver-data-dir'],
+                                       'coverages')
+                for (root, dirs, files) in self.walk(sftp, dirname):
+                    dirs[:] = [
+                        d for d in dirs if not self.filter_fn(d.filename)
+                        ]
+                    dir_count = len([
+                        f for f in files if self.is_tiff(f.filename)
+                        ])
+                    if dir_count:
+                        self.log('{}\t{}'.format(root, dir_count))
+                    raster_counts += dir_count
+
+        return raster_counts
+
+    @contextmanager
+    def connect(self):
+        ssh = paramiko.SSHClient()
+        ssh.load_system_host_keys()
+        ssh.connect(
+            hostname=self.config['host'],
+            port=self.config.get('port', 22),
+            username=self.config['user'],
+            password=self.config.get('password'),
+            )
+        try:
+            yield ssh
+        finally:
+            ssh.close()
+
+    def walk(self, sftp, basedir):
+        ls = sftp.listdir_attr(basedir)
+        dirs = [
+            dirname for dirname in ls
+            if stat.S_ISDIR(dirname.st_mode) or stat.S_ISLNK(dirname.st_mode)
+            ]
+        files = [
+            filename for filename in ls if not stat.S_ISDIR(filename.st_mode)
+            ]
+
+        yield (basedir, dirs, files)
+
+        for dirname in dirs:
+            full_dir_name = os.path.join(basedir, dirname.filename)
+            for dir_info in self.walk(sftp, full_dir_name):
+                yield dir_info
+
+    def is_tiff(self, filename):
+        (_, ext) = os.path.splitext(filename)
+        ext = ext.lower()
+        return ext == '.tif' or ext == '.tiff'
+
+
 class Script(object):
 
     def __init__(self, argv=None):
@@ -208,6 +285,8 @@ class Script(object):
     def do_totals(self):
         if self.opts.do_totals:
             print('layers\t{}'.format(self.layer_total))
+            print('raster\t{}'.format(self.raster_total))
+            print('titles\t{}'.format(self.raster_total + self.table_total))
 
     def main(self, argv=None):
         postgis = PostGISMetrics(
@@ -215,7 +294,15 @@ class Script(object):
             self.opts.filter,
             self.opts.verbose,
             )
-        self.layer_total = postgis.get_layer_count()
+        (self.table_total, self.layer_total) = postgis.get_counts()
+
+        rasters = RasterMetrics(
+            self.config['rasters'],
+            self.opts.filter,
+            self.opts.verbose,
+            )
+        self.raster_total = rasters.get_counts()
+
         self.do_totals()
 
 

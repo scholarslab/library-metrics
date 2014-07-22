@@ -17,6 +17,10 @@ postgis:
     port: 5432
     user: postgis_user
     password: secret
+rasters:
+  host: geo.server.com
+  user: err8n
+  geoserver-data-dir: /var/geodata/geoserver/data
 ```
 
 Now you can call it like this:
