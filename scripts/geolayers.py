@@ -20,8 +20,8 @@ postgis:
     user: post_user_2
     password: hushhush
 rasters:
-  host: libsvr35.lib.virginia.edu
-  user: err8n
+  host: geo.server.com
+  user: username
   geoserver-data-dir: /var/geodata/geoserver/data
 geoserver:
   url: http://geo.server.com:8080/geoserver
