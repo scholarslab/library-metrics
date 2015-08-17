@@ -55,5 +55,11 @@ Now you can call it like this:
 ./bin/geolayers.py --config config.yml --filter '^ESRI' --filter '^MLB'
 ```
 
+OR
+
+```shell
+rake geoserver
+```
+
 Other options are available to control the output.
 
