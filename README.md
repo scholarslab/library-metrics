@@ -4,33 +4,35 @@
 This repository contains scripts and utilities for generating numbers for
 various library metrics that we're required to give every year.
 
-## Setup
+This counts the number of features in PostGIS databases. 
 
-### Python Dependencies
+# Setup
 
-Run `rake init:dependencies`
+1. Python Dependencies
 
-OR `pip install --requirement requirements.txt`
+    Run `rake init:dependencies`
 
-### Python Environment
+    OR `pip install --requirement requirements.txt`
 
-Run `rake init:virtualenv` then `source bin/activate`
+1. Python Environment
 
-OR ` virtualenv .` then `source bin/activate`
+    Run `rake init:virtualenv` then `source bin/activate`
 
-### Copy geolayers.py
+    OR ` virtualenv .` then `source bin/activate`
 
-Copy geolayers.py from scripts to bin directory
+1. Copy geolayers.py
 
-`cp scripts/geolayers.py bin`
+    Copy geolayers.py from scripts to bin directory
 
+    `cp scripts/geolayers.py bin/`
 
+1. Create config.yml
 
-## bin/geolayers.py
+    This needs a YAML configuration file to tell it how to connect to all of the
+databases you need counts from.
 
-This counts the number of features in PostGIS databases. This needs a YAML
-configuration file to tell it how to connect to all of the databases you need
-counts from.
+    The config.yml file should be on the same level as the bin folder (not within
+the bin folder).
 
 ```yaml
 ---
@@ -39,6 +41,10 @@ postgis:
     port: 5432
     user: postgis_user
     password: secret
+  - host: postgis2.server.com
+    port: 5432
+    user: postgis2_user
+    password: secret2
 rasters:
   host: geo.server.com
   user: username
@@ -48,6 +54,8 @@ geoserver:
   user: admin
   password: secret
 ```
+
+# Run the script
 
 Now you can call it like this:
 
@@ -61,5 +69,21 @@ OR
 rake geoserver
 ```
 
+# Options
+
 Other options are available to control the output.
+
+--config = The database configuration file.
+
+--filter = Don't get counts for databases matching these. Can be given more than once.
+
+--no-totals = Don't print totals.
+
+--verbose = Extra output.
+
+
+# Notes
+
+- The user supplied in the config.yml for connecting to the host must be able to access the pg_hba.conf file (meaning the account will need sudo access).
+
 
