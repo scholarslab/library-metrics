@@ -10,21 +10,9 @@ This counts the number of features in PostGIS databases.
 
 1. Python Dependencies
 
-    Run `rake init:dependencies`
+    Run `rake init`
 
     OR `pip install --requirement requirements.txt`
-
-1. Python Environment
-
-    Run `rake init:virtualenv` then `source bin/activate`
-
-    OR ` virtualenv .` then `source bin/activate`
-
-1. Copy geolayers.py
-
-    Copy geolayers.py from scripts to bin directory
-
-    `cp scripts/geolayers.py bin/`
 
 1. Create config.yml
 
