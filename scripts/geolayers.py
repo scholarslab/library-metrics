@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python3
 
 
 """\
@@ -269,7 +269,7 @@ class LayerMetrics(MetricsBase):
         req = requests.get(url, auth=self.auth)
         items = [
             obj for obj in req.json()[key0][key1]
-            if not self.filter_fn(unicode(obj['name']))
+            if not self.filter_fn(str(obj['name']))
             ]
         return len(items)
 
